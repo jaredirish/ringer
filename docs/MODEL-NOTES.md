@@ -22,6 +22,14 @@ checks and raw logs support — no vibes, no worker self-reports.
   passes.
 - 2026-07-06 — adversarial pre-merge review (aicred spark): passed on
   attempt 1, ~85k tokens.
+- 2026-07-09 — scrib-db-catchup-gates (code-feature x2 + code-fix, DB
+  mutation rail + read-only diagnostic, reasoning=high on the rail): 3/3
+  first-attempt passes, all offline tests green. Caveat: offline checks
+  can't see live-data shape — codex's re-point planner had a
+  unique-index-collision bug (double re-point within a group) only visible
+  against live Silver refs; orchestrator review caught it, one-task fix
+  round landed it. For DB rails, pair the worker's offline tests with an
+  orchestrator live read-only probe before integrating.
 - 2026-07-06 — motion design (5 HTML animations for video b-roll) + 2
   editorial diagram pages, each verified by rendering through headless
   Chromium to MP4/PNG: 7/7 passed on attempt 1. Broadcast-quality visual
@@ -269,3 +277,8 @@ checks and raw logs support — no vibes, no worker self-reports.
 ## codex (2026-07-06, bench-operator-proofing)
 - 8/8 code-feature tasks passed attempt 1 across 3 rounds (worktrees mode, Python harness refactor; 108k-406k tokens/task). Specs embedded the approved architecture doc + exact file ownership; checks built fresh uv venvs and ran the full pytest suite.
 - Lesson (check design, not model): all 3 post-integration bugs were invisible to the checks — a test that passed only because the worker's worktree lacked .env, a `--help`-only assertion missing a runtime importlib/sys.modules bug (py3.12 dataclasses), and bare console-script names failing outside activated venvs. Checks should exercise one real invocation from a cold shell, not just --help.
+
+## scrib-bronze-hardening (2026-07-09, code-fix)
+- **codex, 13/13 code-fix lanes PASS attempt 1** (worktrees mode, real multi-file Python fixes with new pytest tests; 31k-186k tokens/task). Specs embedded the SCR-13 disposition's one-line fix + literal executable check + exact file ownership; checks ran targeted tests + the full offline suite. Strong on well-specced, file-disjoint code fixes — including two STAGED-only tasks (author a migration/analysis script, never run it) which codex respected (no DB calls).
+- **nvidia/nemotron-3-super-120b-a12b:free (opencode-intel) — DEMOTE, blocked at the door.** Both attempts died with OpenRouter 404 "No endpoints available matching your guardrail restrictions and data policy." This is the account's OpenRouter privacy setting rejecting free models that require prompt-data sharing, NOT a model-quality signal — it never ran a token. Lesson: do not audition `:free` OpenRouter models under this account until the data-policy/privacy setting is opened; the exploration lane is wasted otherwise. Route low-stakes lanes to a paid GLM/codex tier instead.
+- **Check-craft lesson (integration blast radius):** per-task checks that run the full suite pass IN ISOLATION (each worktree is off base HEAD) but miss cross-patch semantic breaks. A contract-tightening task (#3 required source_ref) broke an UNOWNED sibling test file only visible once all patches were integrated. The swarm can't catch this; the orchestrator must re-run the full suite on the integrated tree and own the glue. Also caught a real hole: a new test importing a module that runs load_dotenv() at import leaked a live DB URL into the whole suite's env, silently un-skipping DB tests → live connections. Integration re-verification is non-optional.
