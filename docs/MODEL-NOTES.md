@@ -32,6 +32,14 @@ checks and raw logs support — no vibes, no worker self-reports.
   the BASELINE failure set, never assert absolute suite green.
 - 2026-07-06 — adversarial pre-merge review (aicred spark): passed on
   attempt 1, ~85k tokens.
+- 2026-07-09 — scrib-db-catchup-gates (code-feature x2 + code-fix, DB
+  mutation rail + read-only diagnostic, reasoning=high on the rail): 3/3
+  first-attempt passes, all offline tests green. Caveat: offline checks
+  can't see live-data shape — codex's re-point planner had a
+  unique-index-collision bug (double re-point within a group) only visible
+  against live Silver refs; orchestrator review caught it, one-task fix
+  round landed it. For DB rails, pair the worker's offline tests with an
+  orchestrator live read-only probe before integrating.
 - 2026-07-06 — motion design (5 HTML animations for video b-roll) + 2
   editorial diagram pages, each verified by rendering through headless
   Chromium to MP4/PNG: 7/7 passed on attempt 1. Broadcast-quality visual
@@ -319,3 +327,7 @@ checks and raw logs support — no vibes, no worker self-reports.
 ## Process lessons (2026-07-28, PR #82 review)
 - **Ideas worth keeping from a rejected PR.** PR #82's pre-call gateway was dropped (needs your own API key, so it converts flat-rate OAuth plans into metered API billing; incompatible with Claude Code; and it saves tokens by stripping the tool list, which is the thing that makes the CLI worth using). One idea inside it is worth remembering if the problem ever comes back: an *explicitly blessed* answer cache — key a reviewed answer to the exact request plus the exact selected source packet, and replay it with zero upstream calls, never auto-accepting a model answer. It only fires on byte-identical repeats, which is why it didn't justify 2,000 lines here.
 - **Doc-stated support floors need a CI job or they are fiction.** README promised Python 3.11+ while CI only ever ran 3.12; a 3.12-only f-string reached review with a fully green suite. Either test the floor or move it.
+## scrib-bronze-hardening (2026-07-09, code-fix)
+- **codex, 13/13 code-fix lanes PASS attempt 1** (worktrees mode, real multi-file Python fixes with new pytest tests; 31k-186k tokens/task). Specs embedded the SCR-13 disposition's one-line fix + literal executable check + exact file ownership; checks ran targeted tests + the full offline suite. Strong on well-specced, file-disjoint code fixes — including two STAGED-only tasks (author a migration/analysis script, never run it) which codex respected (no DB calls).
+- **nvidia/nemotron-3-super-120b-a12b:free (opencode-intel) — DEMOTE, blocked at the door.** Both attempts died with OpenRouter 404 "No endpoints available matching your guardrail restrictions and data policy." This is the account's OpenRouter privacy setting rejecting free models that require prompt-data sharing, NOT a model-quality signal — it never ran a token. Lesson: do not audition `:free` OpenRouter models under this account until the data-policy/privacy setting is opened; the exploration lane is wasted otherwise. Route low-stakes lanes to a paid GLM/codex tier instead.
+- **Check-craft lesson (integration blast radius):** per-task checks that run the full suite pass IN ISOLATION (each worktree is off base HEAD) but miss cross-patch semantic breaks. A contract-tightening task (#3 required source_ref) broke an UNOWNED sibling test file only visible once all patches were integrated. The swarm can't catch this; the orchestrator must re-run the full suite on the integrated tree and own the glue. Also caught a real hole: a new test importing a module that runs load_dotenv() at import leaked a live DB URL into the whole suite's env, silently un-skipping DB tests → live connections. Integration re-verification is non-optional.
