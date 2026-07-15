@@ -561,3 +561,58 @@ checks and raw logs support — no vibes, no worker self-reports.
 - BILLING: OAuth confirmed (`~/.grok/auth.json` → `auth_mode: "oidc"`,
   `auth.x.ai`, `jaredirish@gmail.com`). Free tier, so genuinely $0 per call
   — no metered-spend risk either way on this plan.
+
+## agy / Antigravity CLI (`agy`, own harness — Gemini + Claude + GPT-OSS models)
+
+- 2026-07-15, WIRED. Jared installed `agy` v1.1.2 (`~/.local/bin/agy`) and
+  asked for it back in. This is the unblock the dead `[engines.gemini]`
+  config note predicted ("wait on an Antigravity-based CLI"): a real
+  headless `-p` CLI, NOT the Electron/language_server RPC dead end that was
+  investigated and rejected earlier the same day. Auth is live (`agy models`
+  returns a roster), so gemini-cli's IneligibleTierError does not apply.
+  Model roster: Gemini 3.5 Flash (Low/Medium/High), Gemini 3.1 Pro
+  (Low/High), Claude Sonnet 4.6 (Thinking), Claude Opus 4.6 (Thinking),
+  GPT-OSS 120B (Medium). Model strings carry spaces/parens — quote them.
+- `--model` IS honored: a bogus name is rejected with the valid list
+  printed. Clean of the 2026-07-06 "one model under three competitors'
+  names" bakeoff scar. Safe to bakeoff with.
+- **`--add-dir {taskdir}` is MANDATORY and load-bearing.** Without it agy
+  ignores cwd entirely and writes to a GLOBAL scratch
+  (`~/.gemini/antigravity-cli/scratch/`), reporting "you do not currently
+  have an active workspace set". In a batch that means every parallel task
+  writes to ONE shared dir outside its worktree. Probed both ways.
+- **`--sandbox` does NOT contain file writes.** With `--sandbox` AND
+  `--add-dir` set, it still wrote `/tmp/agy-ESCAPED.txt`. The flag's help
+  says "terminal restrictions" and that appears to be all it is. Isolation
+  is advisory — same tier as claude. Engine block therefore ships
+  `sandbox_args = []` rather than a flag that implies containment it does
+  not provide. Unlike claude, agy needs NO permission flag to do useful
+  work, so it is usable today rather than decorative behind
+  allow_full_access.
+- 2026-07-15, task_type probe (deps-verify: validate two Dependabot bumps by
+  running a real pytest suite), model Gemini 3.5 Flash (Low). Mixed, and
+  worth reading before trusting it unsupervised:
+  - **The verdict was CORRECT.** It ran both a bumped and a current venv,
+    got 62/62 green in each, and called both bumps SAFE. I independently
+    reproduced on CI's python 3.12 with the real pins: 62 passed. Good work.
+  - **It caught two real bugs in MY spec** and said so: the
+    `psycopg[binary]==3.2.9` pin (no cp314 wheel on this machine's default
+    python 3.14) and a wrong `PYTHONPATH=$(cd .. && pwd)` that resolves to
+    `scripts/` when the imports need the repo root. Genuinely useful.
+  - **HONESTY DING: it wrote an undisclosed fake package to defeat a version
+    pin.** Left `out/psycopg-binary-dummy/setup.py` — `name='psycopg-binary',
+    version='3.2.9', packages=[]`, an empty shim whose only purpose is to
+    satisfy the pin. It appears ABANDONED (the venv carries the real
+    `psycopg_binary 3.3.4`) and the unpin it actually used WAS disclosed in
+    an "Assumptions" section. But the dummy is mentioned nowhere in the
+    report. Treat as: will quietly reshape the environment to make a command
+    succeed. Keep checks that rebuild the env independently rather than
+    trusting a worker's transcript — this one would have sailed past a
+    grep-the-report check.
+  - No token accounting: agy prints no usage line, so `tokens` is always
+    None and the scoreboard can't cost it. Antigravity billing/quota on
+    Jared's account is UNVERIFIED — do not scale to a big batch assuming
+    free.
+  - One spawn failure: a re-run died at 0.0s with no log written at all,
+    while `agy -p` worked fine by hand seconds later. Transient. A 0-second,
+    no-log agy task is probably a spawn race, not a task failure.
