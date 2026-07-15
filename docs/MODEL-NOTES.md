@@ -412,3 +412,152 @@ checks and raw logs support — no vibes, no worker self-reports.
   loosening tests, and volunteered the descriptor-conflict guard the spec hinted
   at. High reasoning effort (`model_reasoning_effort=high`) on the two hard tasks;
   default on the easy two — no observable quality gap on the easy lane.
+
+## claude (Claude Code CLI, OAuth harness) — new engine 2026-07-15
+
+- 2026-07-15 — ringer-engine-audition (probe, sum-of-first-30-primes,
+  independently-recomputed check): 1/1 first-try PASS, 16.4s, `sonnet`
+  pinned via model_default, no token count (text output has none — expected,
+  matches the plan-billed-CLI pattern). Wired via
+  `~/.config/ringer/engines/claude-sandboxed.sh` + `[engines.claude]` in
+  config.toml.
+- SANDBOX FINDING (the important one): Seatbelt (sandbox-exec) does NOT
+  confine Claude Code 2.1.210's own Bash-tool/Write-tool file writes on this
+  Mac, even though the identical profile correctly confines a plain
+  `/bin/sh`. Reproduced twice with a direct sandbox-exec invocation of the
+  `claude` binary, bypassing the wrapper script entirely — a write to a path
+  outside every allowed subpath succeeded and the file existed on disk
+  afterward, while Claude Code's own internal writes (a cwd-tracking tmp
+  file, /dev/null in one run) correctly got EPERM'd, proving the process was
+  genuinely running under the profile, just not contained by it for the
+  writes that matter. Root cause not identified — candidates are a PTY or
+  shell-server indirection in the Bash-tool implementation, or a Write-tool
+  code path that skips the syscalls the profile expects. Consequence: the
+  engine's `sandbox_args` is deliberately empty and the wrapper REFUSES to
+  run at all unless invoked with `--full-access-ack` — every claude task
+  must set `"full_access": true` and the config must set
+  `allow_full_access = true`. Keep claude tasks scoped to scratch dirs, not
+  live repos, until re-verified against a newer Claude Code build. Do not
+  assume this generalizes to `codex` or `opencode` (both use different
+  execution paths) — untested here, out of scope for this audit.
+- BILLING: confirmed OAuth (`claude auth status` → authMethod "claude.ai",
+  subscriptionType "max"; ANTHROPIC_API_KEY unset machine-wide at audit
+  time). The wrapper unsets ANTHROPIC_API_KEY/ANTHROPIC_AUTH_TOKEN/Bedrock/
+  Vertex switches before exec regardless, so this holds even if a future
+  shell exports one. `--output-format json` (opt-in only) reports a
+  `total_cost_usd` figure that is Max-plan usage-valuation, not a real
+  invoice — don't mistake it for metered spend if a future task turns that
+  on for cost logging.
+- CONTEXT/RECURSION: `--setting-sources ""` + `--strict-mcp-config` (no
+  --mcp-config) strip CLAUDE.md/hooks/skills/MCP servers entirely — verified
+  necessary: without them, a run from inside a hook-configured repo silently
+  loaded that repo's CLAUDE.md and fired a SessionStart hook that dumped
+  live project status into the "worker" transcript. `--tools
+  Bash,Edit,Read,Write` excludes "Agent" (full list: Agent, Bash, Edit, Read,
+  ReportFindings, ScheduleWakeup, Skill, ToolSearch, Workflow, Write) —
+  confirmed a restricted worker cannot spawn further Claude subagents.
+- MODEL ROUTING GOTCHA: a bare `claude -p` with no `--model` lets Claude
+  Code's own auto-mode classifier pick per turn — observed ONE two-word
+  reply get split across BOTH claude-haiku-4-5 and claude-opus-4-8[1m] in a
+  single JSON-output test. Always pin `--model` (model_default = "sonnet"
+  here) or cost/latency becomes unpredictable.
+- FULL_ACCESS IS A CONFIG-WIDE GATE, NOT PER-ENGINE — checked in ringer.py
+  directly (`grep -n allow_full_access ringer.py`): `RingerConfig.
+  allow_full_access` is one flat boolean, tested once per task
+  (`if runtime.task.full_access and not self.config.allow_full_access`) with
+  no per-engine variant anywhere in the schema. Since claude's wrapper
+  refuses to run at all without `--full-access-ack`, EVERY real claude task
+  needs `allow_full_access = true` in config — and that flag also unblocks
+  full_access for any other task/engine in the same config, not just
+  claude's. Practical state: codex and grok are usable with the gate at its
+  safe default (`false`); claude requires Jared to consciously flip a
+  config-wide switch to use at all. Not fixable from config — would need a
+  ringer.py change (e.g. a per-engine override) to scope it tighter; out of
+  scope here (ringer.py itself was off-limits for this task).
+
+## gemini — NOT wired 2026-07-15
+
+- gemini-cli 0.31.0 is non-functional on this machine for ANY use right now,
+  independent of Ringer or sandboxing. `~/.gemini/settings.json` pins
+  `security.auth.selectedType` to `oauth-personal` (Google's "Code Assist for
+  individuals" flow), which Google has deprecated in favor of "Antigravity" —
+  every invocation hits `IneligibleTierError: This client is no longer
+  supported for Gemini Code Assist for individuals`, reproduced with `-s`,
+  without `-s`, and with GEMINI_API_KEY/GOOGLE_API_KEY exported (traced into
+  gemini-cli-core's validateNonInteractiveAuth: the persisted
+  `configuredAuthType` from settings.json is checked BEFORE env vars, so the
+  broken oauth-personal setting wins even with a live-looking API key sitting
+  in the same settings file). OAuth is dead at Google's end, not fixable from
+  the Ringer side. The only path that would even start is metered API-key
+  billing — the opposite of the "stop paying per token" directive this task
+  was wired to satisfy — so left commented out rather than shipped bill-
+  silently or mislabeled as OAuth. Did not touch settings.json (Jared's
+  personal Gemini CLI config, out of scope). `-s/--sandbox`'s actual
+  mechanism (container vs Seatbelt vs no-op) was never reached in testing —
+  auth fails before sandbox selection — so that question is [unverified] and
+  moot until auth is fixed.
+- **Antigravity checked 2026-07-15, dead end.** The IneligibleTierError
+  points at Antigravity, and Jared has it installed (`/Applications/
+  Antigravity.app` v2.0.6). Bounded 10-min look: the GUI binary
+  (`Contents/MacOS/Antigravity`) ignores `--help` and just launches an
+  Electron window (had to `pkill` it after probing). One layer down,
+  `Contents/Resources/bin/language_server` is a real Go binary with a
+  genuine `-headless=true` flag and its own auth/model-client surface
+  (`-model_api_client_type=ccpa|gemini`, OAuth client-id overrides) — likely
+  what the GUI itself talks to, possibly on a non-deprecated auth path. But
+  it's an RPC/LSP server (HTTP/HTTPS/LSP ports, CSRF token, undocumented
+  protocol) meant for the Electron shell to drive, not a `-p "prompt"` CLI.
+  Wiring it as a Ringer engine would mean reverse-engineering that protocol
+  from scratch — a multi-day project, not a config block. Not attempted;
+  flagged as a possible future project, not a quick fix.
+
+## grok (Grok Build CLI, xAI, OAuth harness — free tier) — new engine 2026-07-15
+
+- 2026-07-15 — ringer-engine-audition (probe, 10-factorial, independently-
+  recomputed check): 1/1 first-try PASS, 11.9s, `grok-4.5`, 77,076 tokens
+  (real number this time — see USAGE FIELDS below). Wired via
+  `[engines.grok]` in config.toml, uncommenting and re-verifying the block
+  team-lead had pre-written against v0.2.81.
+- **VERSION DRIFT — the template did NOT survive contact with v0.2.101
+  unchanged.** Installed binary is v0.2.101 (20 versions past the
+  "verified against" line). Two real breaks found and fixed:
+  1. `model_default = "grok-composer-2.5-fast"` is DEAD — that model id no
+     longer exists. `grok models` on this account now lists exactly one
+     model, `grok-4.5` (also the CLI's own default). Every other flag in the
+     template (`--cwd`, `--sandbox`, `-m`, `--always-approve`,
+     `--no-auto-update`, `--output-format json`, `-p`) parsed and ran
+     cleanly unchanged, including the hidden `--no-auto-update` flag (still
+     accepted, still absent from `--help`).
+  2. USAGE FIELDS NOW PRESENT: the old block's comment said Grok's JSON
+     carries no token/usage data and the token_regex was a deliberate
+     no-match. False as of v0.2.101 — every response now includes a real
+     `"usage":{"total_tokens":N,...}` object, confirmed the regex extracts
+     it (77076 in the audition row above). Still plan-included/free-tier,
+     not a per-token bill, but it's real telemetry now, not a no-op.
+  - LESSON: a "verified against vX.Y" comment with no re-check cadence goes
+    stale silently — the CLI doesn't warn on startup that it's newer than
+    what the config assumes. Worth a `grok --version` spot-check whenever
+    this engine gets touched again.
+- **SANDBOX VERDICT: REAL** — this is the interesting contrast with the
+  `claude` engine in this same file. `--sandbox workspace` correctly BLOCKED
+  a worker's write to `$HOME` (outside cwd/temp/`~/.grok`) while ALLOWING
+  writes inside the task's cwd and under `/private/tmp` (matches the
+  documented profile scope). Verified via direct boundary test, not assumed
+  from the flag's name. Underlying OS mechanism not independently confirmed
+  — [unverified] whether it's Seatbelt or something else — but the actual
+  containment behavior was tested and held.
+- **FREE-TIER CONCURRENCY CEILING — the finding that matters most.** Ran 3
+  simultaneous headless `grok` invocations (background probe, not through
+  Ringer) as a rate-limit probe: 2 succeeded, the 3rd instantly hard-failed
+  with `{"type":"error","message":"You've hit the rate limit for your plan.
+  Upgrade your account or try again later."}` (exit 1, no retry-after
+  given). Jared confirmed he's on the free tier, not SuperGrok/X Premium
+  Plus. RECOMMENDATION: `max_parallel: 1` for any manifest round that uses
+  grok; treat 2-concurrent as a calculated risk verified working exactly
+  once, not a safe default; never fan out 3+ grok tasks in one round on
+  this plan. A rate-limit failure here reads identically to a real task
+  failure in the run summary — don't misdiagnose a 429 as "grok got the
+  task wrong."
+- BILLING: OAuth confirmed (`~/.grok/auth.json` → `auth_mode: "oidc"`,
+  `auth.x.ai`, `jaredirish@gmail.com`). Free tier, so genuinely $0 per call
+  — no metered-spend risk either way on this plan.
