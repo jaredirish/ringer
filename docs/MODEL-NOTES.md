@@ -339,3 +339,76 @@ checks and raw logs support — no vibes, no worker self-reports.
 - **z-ai/glm-5.2 (opencode-scrib): 1/1 PASS attempt 1** on the stranded PRICE-1 lane (defense-in-depth admin assert + test mocks, 65k tokens, ~$0.07, 235s). Picked the correct existing helper (`isAdmin` from `@/lib/db/queries`) unprompted. Promotion evidence for GLM on well-specced single-file code-fix lanes.
 - **Ops gotcha (worktrees + rerun):** a failed lane's worktree is NOT auto-deleted; rerunning the same task key in the same workdir errors at spawn (0.0s, no worker log) until `git worktree remove` clears the stale dir. Ringer prints no spawn error in the summary — diagnose via the missing worker log.
 - **Integration re-verification again non-optional:** integrated tree was typecheck/test green, but full-lint diff vs baseline caught 1 new warning (unused destructure in a lane's new test) invisible to per-lane checks (eslint wasn't in the lane check budget). One-line orchestrator fix.
+
+## GLM 5.2 (openrouter/z-ai/glm-5.2, OpenCode harness)
+
+- 2026-07-09 — scrib-leftovers swarm (9 lanes, code-feature/code-fix/research): carried the day after
+  codex hit its ChatGPT usage window. Strong: Python rails (silver-dedupe 11 tests att-2 substance,
+  quarantine 12 tests att-1, scout investigation att-1 with all citations surviving an executed
+  verifier — it correctly REFUTED the docstring's suspect), the #692 Python repoint, and a full
+  Next.js admin surface. Weak: (a) echoes spec constraints verbatim into docstrings — banned-token
+  greps false-fail on its comments; grep for imports/usage, not strings. (b) Over-rigid self-written
+  test assertions (asserted exact markup its own renderer didn't emit). (c) One real code bug: BFS
+  tree walk with no visited-set → OOM under a repeating mock. (d) On a 2-large-file integration task
+  it read 34 files and edited nothing, twice — split to one-file scope fixed it. (e) It skipped a
+  small specced deliverable (README) once. Verdict: excellent per-file builder at ~cents/task;
+  keep tasks single-surface and make checks substance-based.
+
+## Process lessons (2026-07-09, scrib-leftovers)
+
+- codex: ChatGPT usage window ran out mid-swarm ("try again at 7:25 PM") — every worker died at
+  spawn. Check quota BEFORE launching a 9-lane batch on one engine.
+- OpenRouter per-project keys (scrib/intel) both hit DAILY BUDGET caps (403, isRetryable:false,
+  workers die at 0 tokens). Default key store was the working fallback.
+- Concurrent opencode workers intermittently die on "database is locked" (shared state SQLite).
+  When spawns die in seconds, serialize: max_parallel 1, one run at a time.
+- Killed/failed runs leave REGISTERED task worktrees; the next run's `git worktree add` at the same
+  path errors instantly (verdict ERROR, 0.0s). Always `git worktree remove --force` + prune between
+  rounds.
+- Check-bug rate was the story of the day: 6 of the first 9 lane failures were my checks failing
+  honest work (comment-string greps, exact-markup asserts, `.pnpm-store` stray-file noise, pipe-rc
+  masking). Strict on substance, tolerant on format — and never trust `cmd | tail` exit codes.
+
+- 2026-07-10 · codex · code-feature (Scrib repo, TS/Next.js): 3/3 first-try on matcher utils (jaro-winkler, agency-normalize, nickname-dict) + 1/1 first-try on flag-gated server actions with a pure decideContribution helper. ~45-90k tok/task, 500-660s. Reused repo auth/paywall/db conventions correctly when pointed at an example file (import.ts). ENV QUIRK on this machine: `pnpm ...` hangs on package-manager self-verification; workers auto-fell-back to `./node_modules/.bin/vitest|tsc` and passed. Bake `pnpm_config_verify_deps_before_run=false` into build-commands, or expect the node_modules/.bin fallback. Not a model issue.
+
+- 2026-07-14 · codex · code-fix/code-feature/research (scrib-phase1 runs): 4/4 substantive PASS. i13 value-aware guard 73k tok/154s first-try; i16 matcher fixes 100k/378s first-try INCLUDING baseline-then-after eval discipline (ran the ratchet before editing, recorded 7/9→10/12, appended golden cases as told); a12 drizzle+script fix first-try. i14 "FAIL" was MY harness bug, not the model: the spec demanded the report at a path OUTSIDE the worktree and codex's sandbox denies writes outside cwd — the worker diagnosed it aloud, wrote the full 288-line report to /private/tmp as a fallback, and kept the repo clean. LESSON: workers write deliverables INSIDE the worktree; the CHECK exports them (the fix-swarm patch pattern) — never point a worker at an external path. Also: 561MB/worktree (scrib-intel) × max_parallel 3 blew a 1.8GB-free disk (all tasks ERROR at identical 38.6s = infra, not model); df check + sequential fallback belongs in pre-flight.
+
+## opencode-scrib key (workspace: scrib-life)
+
+- 2026-07-14 — scrib-agency-gap-resolution (research x118, GLM 5.2): 36 passed
+  over ~50 min, then the WEEKLY OpenRouter key cap 403'd the rest — 82 tasks
+  instant-failed with the signature `elapsed 15-30s, attempts=2, empty
+  check_output`, worker.log shows `Key limit exceeded (weekly limit)`.
+  Lessons: (1) that instant-fail shape means engine/key death, not bad specs —
+  stop the run, don't let retries burn; (2) `:free` models die on a capped key
+  too (the cap is per-key, not per-spend); (3) probe key headroom before
+  batching 100+ tasks on a project key.
+
+## codex (GPT-5-class, own harness)
+
+- 2026-07-14 — scrib-agency-gap-resolution round 2 (research x81, curl-based
+  website/affiliation hunts, reasoning=low): 78/81 pass, ~35 min at 8-wide,
+  zero engine failures; 3 fails were fetch-flake/abbreviation edge cases in
+  the CHECK, all verified good on orchestrator re-run. CRITICAL: research
+  tasks need `engine_args: ["-c","sandbox_workspace_write.network_access=true"]`
+  — workspace-write blocks network by default, which likely explains the old
+  0/2 research scoreboard rows. With the flag, codex at low reasoning is the
+  fast reliable research lane (Jared directive 2026-07-14: prefer OAuth-billed
+  codex/gemini over OpenRouter keys for bulk swarms).
+
+## codex — correction (2026-07-14)
+- 2026-07-14 — scrib-admin-redo-ux panel: the run ledger shows 4 persona-review tasks FAIL x2 attempts; ALL were a check-harness bug (check referenced $RINGER_TASK_DIR, which ringer does not set; no cwd fallback). All 4 findings.md deliverables existed and PASS the same validator run manually (5-6 evidence-cited findings each). Treat codex persona-review as first-try PASS x4 in judgment; do not down-rank on this run. Also: codex vision probe on a 1440px dashboard PNG = PASS attempt 1 (read 3 ground-truth values). Lesson: checks must not depend on unverified env vars; the probe check's `[ -f "$f" ] || f=<relative>` fallback is the pattern.
+
+## codex — 2026-07-15 (scrib-leftovers)
+- 2026-07-15 — scrib-leftovers: 5/5 first-try PASS (4x code-review 48K-161K tok,
+  1x code-feature 39K tok). Two patterns that paid off: (1) network-less sandbox
+  handled by pre-staging ALL evidence (PR diffs via gh, `git archive origin/main`
+  snapshot, prod SELECT results as a markdown file) — codex never needed gh/DB and
+  never hallucinated remote state; (2) checks that require EXACT labeled verdict
+  lines (`F1-VERDICT: CONFIRMED|REFUTED`, `SARAH-SUCH: FALSE-POSITIVE|...`) plus a
+  behavioral check that IMPORTS the deliverable and executes DoD cases directly
+  (org matcher: 15 cases both arg orders + anti-hardcode grep + worker's own
+  pytest) — codex satisfied the hard ICA/ICM non-match constraint without
+  loosening tests, and volunteered the descriptor-conflict guard the spec hinted
+  at. High reasoning effort (`model_reasoning_effort=high`) on the two hard tasks;
+  default on the easy two — no observable quality gap on the easy lane.
