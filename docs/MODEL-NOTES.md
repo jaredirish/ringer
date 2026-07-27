@@ -616,3 +616,66 @@ checks and raw logs support — no vibes, no worker self-reports.
   - One spawn failure: a re-run died at 0.0s with no log written at all,
     while `agy -p` worked fine by hand seconds later. Transient. A 0-second,
     no-log agy task is probably a spawn race, not a task failure.
+
+## 2026-07-21 — opencode lane re-enable smoke (run kimi-glm-codex-bakeoff)
+Trivial `17×23=391` instruction-follow, task_type=bakeoff, on the `[engines.opencode]`
+lane just re-enabled after the 2026-07-15 "no openrouter" disable. All 3 PASS.
+
+- **Kimi K3 (openrouter/moonshotai/kimi-k3)** — first run on this machine's opencode
+  lane. PASS **first-try**, ~26s, ~$0.016, total tokens 46,504 (≈99% cache read; real
+  I/O tiny). Followed "write only the integer" cleanly. Confirms the re-enabled opencode
+  lane runs Kimi K3 end-to-end. Only a one-shot instruction-follow so far — audition on a
+  small real task before trusting a batch.
+- **GLM-5.2 (openrouter/z-ai/glm-5.2)** — PASS on attempt 2. ⚠️ **Attempt-1 failure was
+  INFRASTRUCTURE, not model:** opencode errored `database is locked` before any compute —
+  two opencode workers (kimi + glm) cold-starting concurrently against the shared opencode
+  SQLite at max_parallel=3. GLM's own attempt-2 reasoning identified it as "a database lock
+  error in the ringer engine, not a computation error." Do NOT read as a GLM first-try miss;
+  the scoreboard's failed-attempt row here is infra noise. Fix for concurrent opencode
+  bakeoffs: spawn-stagger (cf. PR #27), or put each OpenRouter model on a separate
+  per-project opencode lane (opencode-scrib/-intel set distinct XDG_DATA_HOME → separate
+  DBs), or serialize the opencode lane with max_parallel=1.
+
+## 2026-07-22 — rails-to-nails-divergence (creative venture ideation, task_type=research)
+
+- **codex** — 3/3 first-try: a web-verified rail-landscape scout (264s, ~258k tok, 15
+  sourced rails) and two creative divergence lenses (~115-167s, ~62-66k tok each) against
+  a structural gate-field validator. Creative-strategy generation with a substance check
+  is squarely in codex's lane; the scout honored the accessed-date/citation contract.
+- **Kimi K3 (openrouter/moonshotai/kimi-k3)** — 2/2 substance passes on real ideation
+  tasks (first non-trivial audition after the 7/21 smoke). One recorded retry was
+  INFRASTRUCTURE: opencode `Unexpected server error` (err_e07a71c9) before any compute;
+  retry passed clean. Quality note: unprompted, it web-verified a statute (Colorado
+  SB24-205 bill page) and tagged what it couldn't confirm [unverified] — good honesty
+  behavior for research lanes. ~$0.11-0.46/task. Moving toward proven for research.
+- **laguna-s-2.1:free (openrouter/poolside/laguna-s-2.1:free)** — DID NOT RUN. Both
+  attempts died in ~10s with OpenRouter 404 "No endpoints available matching your
+  guardrail restrictions and data policy." This is an ACCOUNT-SETTINGS block (free-tier
+  providers vs privacy policy at openrouter.ai/settings/privacy), not a model datapoint.
+  Do not re-audition any :free model until that setting is consciously decided; expect
+  the same 404 for other :free slugs under current settings.
+- **Round 2 addendum (same run)** — adversarial review lane, both first-try. codex
+  (~143k tok): found real named competitors with URLs on 11/12 candidates (RegScale,
+  CMMCTrack, TollBit, Siteline, Rabbet, Built, Cynomi, Concur Detect); terse but
+  well-evidenced. Kimi K3 (~101k tok, ~$0.40): the standout — grounded two kills purely
+  in the verified rails file (AgentCore Policy GA ate the spend-governor thesis), fetched
+  competitor pages to confirm claims on-page, and argued commercial mechanics (E&O
+  liability asymmetry, tollbooth-with-no-traffic) beyond keyword matching. Kimi K3 is now
+  4/4 substance on real research tasks: treat as proven for research; audition next on an
+  adjacent type (code-review already 1/1).
+
+## 2026-07-27 — :free 404 RECURRED (scr-272-preview-db)
+
+- **Repeat offense, not a new datapoint.** Assigned `nvidia/nemotron-3-ultra-550b-a55b:free`
+  to the guard-gap lane as an exploration slot; both attempts 404'd in 8.6s with 0 tokens —
+  identical `No endpoints available matching your guardrail restrictions and data policy`
+  as the 2026-07-22 entry above. The note existed and was not read: `./ringer.py models`
+  prints "Judgment layer: docs/MODEL-NOTES.md" and the orchestrator ran the numbers only.
+- **Do not record as a Nemotron demotion.** No request ever reached the model. Any
+  scoreboard row implying the model failed a code-review task is a false negative.
+- **A prose note is evidently not a strong enough control.** Proposed fix: teach
+  `ringer.py lint` to hard-fail any task whose `model` ends in `:free` while the OpenRouter
+  privacy setting is unchanged, so the manifest cannot be written wrong in the first place.
+  Until that exists, expect this to recur a third time.
+- Other 3 lanes (codex, code-review): 3/3 first-try, 136k/68k/82k tokens, 168-221s.
+  Reports were well-evidenced and respected read-only + no-credential boundaries.
