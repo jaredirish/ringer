@@ -1838,6 +1838,15 @@ def lint_manifest(
                 f"{task.key}: spec is a pointer to an instruction file; anyone watching Ringside "
                 "sees no real brief and the retry prompt loses context — put the instructions in the spec itself."
             )
+        if task.model.strip().endswith(":free"):
+            findings.append(
+                f"{task.key}: model '{task.model}' is an OpenRouter :free slug. These 404 with "
+                "'No endpoints available matching your guardrail restrictions and data policy' "
+                "unless prompt-logging is enabled at openrouter.ai/settings/privacy — the task "
+                "burns both attempts in seconds with zero tokens and teaches the scoreboard nothing. "
+                "See docs/MODEL-NOTES.md (2026-07-22, 2026-07-27). Remove this line once the "
+                "privacy setting is consciously decided."
+            )
         if not task.expect_files and not manifest.worktrees:
             findings.append(
                 f"{task.key}: no expect_files; the results page will guess deliverables from the "
