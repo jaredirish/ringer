@@ -80,8 +80,10 @@ last_verified = 2026-07-10
 
 [engines.opencode.models."openrouter/moonshotai/kimi-k3"]
 display = "Kimi K3"
+lab = "Moonshot AI"
 confidence = "verified"
 source = "OpenRouter slug moonshotai/kimi-k3; promoted to proven for research 2026-07-22 (4/4 substantive research tasks)"
+last_verified = 2026-07-22
 
 [engines.opencode.models."openrouter/moonshotai/kimi-k2.7-code"]
 display = "Kimi K2.7 Code"

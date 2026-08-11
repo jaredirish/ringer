@@ -714,3 +714,25 @@ the work is correct. Either (a) point checks at `<workdir>/<task>/<file>`, or
 (b) follow the documented worktree pattern and have the CHECK export/copy the
 deliverable to its destination. Do not assume absolute paths in a spec reach the
 real filesystem location.
+
+## 2026-08-10 — Model defaults alignment with Nate KB recommendations
+
+**Nate's current benchmarks (July 10, 2026, from unlock-ai.natebjones.com/open-stack):**
+- GPT-5.6 Sol: 74 (strongest general)
+- Claude Sonnet 5 (xhigh): 74 (tied, steerer/dispatch role)
+- Grok 4.5: 70 (fast/precise)
+- GLM 5.2: 63 (cheap bulk)
+- Gemini 3.5 Flash: 56 (lowest cost)
+
+**Nate's guiding principle (June 15, 2026):** "No single best model" — use task-appropriate models, not universally highest score. High reasoning can make work worse; use as specialist.
+
+**Config assessment:** All five engine defaults align with Nate's recommendations and local evidence:
+- codex (GPT-5.5, CLI-managed) — aligns with GPT-5.6 Sol benchmark (74)
+- grok (grok-4.5) — matches Nate's 70 ✓
+- claude (sonnet) — matches Nate's Sonnet 5 at 74 ✓
+- opencode (glm-5.2) — matches Nate's cheap tier at 63 ✓
+- agy (Gemini 3.5 Flash Low) — matches Nate's cost-focused approach ✓
+
+**Change:** Registered Kimi K3 (openrouter/moonshotai/kimi-k3) in model-identity.toml with proper lab/last_verified fields. Previously promoted to proven for research (4/4 substantive passes 2026-07-22) but was missing full registry metadata.
+
+**No model_default changes needed.** Current configuration reflects Nate's portfolio approach: paired defaults (cheap + general) with per-task overrides via manifest's "model" field. This follows Nate's principle of task-appropriate routing over universal model selection.
