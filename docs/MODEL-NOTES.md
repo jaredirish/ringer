@@ -679,3 +679,38 @@ lane just re-enabled after the 2026-07-15 "no openrouter" disable. All 3 PASS.
   Until that exists, expect this to recur a third time.
 - Other 3 lanes (codex, code-review): 3/3 first-try, 136k/68k/82k tokens, 168-221s.
   Reports were well-evidenced and respected read-only + no-credential boundaries.
+
+### moonshotai/kimi-k3 (via opencode)
+- 2026-07-28, run `graphify-nightly-repair`. Tasks: `code-fix` (add a zsh preflight
+  version guard to a nightly cron) and `docs` (1300-word incident postmortem).
+  Both scored FAIL by the harness, but **the failure was mine, not the model's**:
+  the manifest told workers to write to absolute paths outside the sandboxed task
+  workdir, so every deliverable landed in `ringer-work/<task>/` instead. All three
+  workers that produced output did correct work. See the harness lesson below.
+- Quality on inspection was high. On the `docs` task K3 hit every required fact,
+  correctly kept three disproved hypotheses in a "What we ruled out" section
+  rather than asserting them, and wrote genuinely good prose.
+- On the `code-fix` task it caught a subtlety NOT in the spec: graphify 0.9.25
+  prints `skill is from graphify 0.8.36` on **stderr**, so a version guard that
+  merges stderr false-positives on a correct install. Its guard reads stdout only.
+  That is the kind of catch that decides whether a guard is real or theatre.
+- Cost: $3/$15 per M — premium, not a cheap tier. `kimi-k2.7-code` is $0.73/$3.50.
+  Worth K3 for judgment-shaped work; use k2.7-code for mechanical passes.
+- Verdict: promote from untested to probation for `docs` and `code-fix`. Re-run
+  with a corrected manifest before treating the FAIL rows as signal — they measure
+  my sandbox mistake, not K3.
+
+### moonshotai/kimi-k2.7-code (via opencode)
+- 2026-07-28, same run, `research` task (read-only audit with a VERDICT line).
+  Produced a correct verdict (SAFE) matching independently-computed ground truth,
+  266 words. Also scored FAIL for the same workdir reason. Cheap and adequate for
+  scoped read-only scouting.
+
+### HARNESS LESSON (not model-specific) — 2026-07-28
+Ringer workers are sandboxed to their task workdir. A spec that names an absolute
+path OUTSIDE that workdir will have the worker write the file *inside* the workdir
+instead, and any check that inspects the real target path then fails even though
+the work is correct. Either (a) point checks at `<workdir>/<task>/<file>`, or
+(b) follow the documented worktree pattern and have the CHECK export/copy the
+deliverable to its destination. Do not assume absolute paths in a spec reach the
+real filesystem location.
