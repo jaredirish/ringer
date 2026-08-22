@@ -91,6 +91,27 @@ checks and raw logs support — no vibes, no worker self-reports.
   half-written trailing line). Codex is the proven lane for both sides of
   the review->fix loop on this codebase.
 
+## glm-5.3 via opencode (`openrouter/z-ai/glm-5.3`)
+
+- 2026-08-21 — head-to-head bakeoff vs. claude/sonnet on a bounded code-fix
+  (rename a field, `cust_id`→`account_id`, across 3 files/~23 occurrences,
+  verified by a real pytest suite checking old-name-gone, new-name-present,
+  and unchanged public API behavior). Both PASS on attempt 1. GLM-5.3 took
+  49.7s / 54,553 tokens / ~$0.0154; sonnet took 17.7s (tokens/cost not
+  captured — text output format, Max sub). Output diffed **byte-identical**
+  between the two models on all three edited files. Sourced from Nate B.
+  Jones's "six-line handoff" method (newsletter, 2026-08-21) — task shape
+  matches his own worked example almost exactly.
+- Single-sample evidence, not a scoreboard promotion — same caveat Nate
+  gives: this is the class of task (clear objective, no ambiguity, statable
+  acceptance test) where a cheap worker is expected to match a frontier
+  model. Untested here: multi-file tasks requiring judgment about what the
+  job even is, long agentic tool-use chains, or anything needing state held
+  across turns.
+- `z-ai/glm-5.3` confirmed live on OpenRouter same-day; not yet swapped in
+  as `OPEN_OPUS` default in `~/.claude/state/open-tiers.env` (still pinned
+  to 5.2) — worth revisiting after a few more real-task samples.
+
 ## glm-5.2 via opencode (`openrouter/z-ai/glm-5.2`)
 
 - The cheap-intelligence default (~$0.74/M in, $2.33/M out, 2026-07 —
