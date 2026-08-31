@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mdfind *)",
+      "mcp__open-brain__search_thoughts",
+      "mcp__ms365-builderco__list-mail-messages",
+      "mcp__claude_ai_Microsoft_365__read_resource"
+    ]
+  }
+}
