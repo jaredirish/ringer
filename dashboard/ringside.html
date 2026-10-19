@@ -747,7 +747,7 @@
       if (status === "pass" || verdict === "PASS") return "pass";
       if (status === "retrying" || status === "redoing") return "retry";
       if (status === "running" || status === "verifying" || status === "working") return "working";
-      if (status === "fail" || status === "failed" || status === "error" || status === "timeout" || status === "died" || verdict === "FAIL") return "fail";
+      if (status === "fail" || status === "failed" || status === "error" || status === "timeout" || status === "died" || ["FAIL", "ERROR", "TIMEOUT", "ENGINE_FAILED"].includes(verdict)) return "fail";
       return "waiting";
     }
 
@@ -1177,7 +1177,7 @@
       const kind = taskKind(task);
       if (kind === "pass" || kind === "fail") {
         const verified = String(task.verified || "").trim();
-        const proofTail = String(task.check_output_tail || "").trim();
+        const proofTail = [task.failure_reason, task.check_output_tail].filter(Boolean).join("\n").trim();
         if (verified || proofTail) {
           const verdict = document.createElement("div");
           verdict.className = "verdict";
