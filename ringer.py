@@ -636,6 +636,7 @@ class TaskSpec:
     # engine's {model} placeholder); empty means the engine's model_default.
     model: str = ""
     task_type: str = ""
+    allow_engine_nonzero: bool = False
 
     @classmethod
     def from_obj(cls, obj: dict[str, Any]) -> "TaskSpec":
@@ -676,6 +677,9 @@ class TaskSpec:
         task_type = obj.get("task_type", "")
         if not isinstance(task_type, str):
             raise ValueError(f"task {key}: task_type must be a string")
+        allow_engine_nonzero = obj.get("allow_engine_nonzero", False)
+        if not isinstance(allow_engine_nonzero, bool):
+            raise ValueError(f"task {key}: allow_engine_nonzero must be true or false")
         return cls(
             key=key,
             spec=spec,
@@ -688,6 +692,7 @@ class TaskSpec:
             verified=verified.strip(),
             model=model.strip(),
             task_type=task_type.strip(),
+            allow_engine_nonzero=allow_engine_nonzero,
         )
 
 
@@ -1049,6 +1054,7 @@ class TaskRuntime:
     worker_pid: int | None = None
     tokens: int | None = None
     final_verdict: str | None = None
+    last_worker_returncode: int | None = None
     last_check_returncode: int | None = None
     last_check_timed_out: bool = False
     last_check_output: str = ""
@@ -1242,6 +1248,11 @@ class StateWriter:
                     "spec_short": runtime.spec_short,
                     "verified": runtime.task.verified,
                     "check": runtime.task.check,
+                    "worker_returncode": runtime.last_worker_returncode,
+                    "failure_reason": (
+                        f"Engine exited with code {runtime.last_worker_returncode}"
+                        if runtime.final_verdict == "ENGINE_FAILED" else None
+                    ),
                     "check_returncode": runtime.last_check_returncode,
                     "check_timed_out": runtime.last_check_timed_out,
                     "check_output_tail": shorten(runtime.last_check_output, 4000),
@@ -3387,7 +3398,7 @@ def plain_transition_event(
 
 
 def first_check_output_line(task: dict[str, Any]) -> str:
-    raw = task.get("check_output_tail") or task.get("check_output") or ""
+    raw = task.get("failure_reason") or task.get("check_output_tail") or task.get("check_output") or ""
     for line in str(raw).splitlines():
         clean = line.strip()
         if clean:
@@ -3539,7 +3550,8 @@ def render_work_group(
     elif bucket == "pass":
         items_html = '<p class="empty-note">Finished and checked — this worker filed nothing to the shelf.</p>'
     elif bucket == "fail":
-        items_html = '<p class="empty-note">Failed its check — nothing was delivered.</p>'
+        reason = html_escape(str(task.get("failure_reason") or "Failed its check"))
+        items_html = f'<p class="empty-note">{reason} — nothing was delivered.</p>'
     elif bucket in {"working", "retry"}:
         items_html = '<p class="empty-note">Nothing delivered yet — still on it.</p>'
     else:
@@ -3552,7 +3564,10 @@ def render_work_group(
     verified_html = ""
     if bucket in {"pass", "fail"}:
         verified_text = str(task.get("verified") or "").strip()
-        proof_tail = str(task.get("check_output_tail") or "").strip()
+        proof_tail = "\n".join(
+            str(value).strip() for value in
+            (task.get("failure_reason"), task.get("check_output_tail")) if value
+        )
         if verified_text:
             how_label = "How it was checked" if bucket == "pass" else "What the check demanded"
             verified_html += f'<span class="verified">{how_label}: {html_escape(verified_text)}</span>'
@@ -7470,8 +7485,9 @@ class RingerRunner:
                     if worker.tokens is not None:
                         runtime.tokens = (runtime.tokens or 0) + worker.tokens
                 verify = await self.verifier.verify(runtime.task, runtime.taskdir)
-                verdict = verdict_for(worker, verify)
+                verdict = verdict_for(worker, verify, runtime.task.allow_engine_nonzero)
                 with self.lock:
+                    runtime.last_worker_returncode = worker.returncode
                     runtime.last_check_returncode = verify.check_returncode
                     runtime.last_check_timed_out = verify.check_timed_out
                     runtime.last_check_output = verify.raw_output_excerpt
@@ -7992,12 +8008,16 @@ class AsyncFileCloser:
         self.fh.close()
 
 
-def verdict_for(worker: WorkerResult, verify: VerifyResult) -> str:
+def verdict_for(
+    worker: WorkerResult, verify: VerifyResult, allow_engine_nonzero: bool = False
+) -> str:
     if worker.error:
         return "ERROR"
     if worker.timed_out or verify.check_timed_out:
         return "TIMEOUT"
     if verify.ok:
+        if worker.returncode not in (0, None) and not allow_engine_nonzero:
+            return "ENGINE_FAILED"
         return "PASS"
     return "FAIL"
 
@@ -8615,6 +8635,9 @@ def print_summary(run_id: str, runtimes: list[TaskRuntime]) -> None:
             f"{(runtime.final_verdict or ''):<8} {runtime.attempts:>8} "
             f"{tokens:>10} {runtime.elapsed_s(now):>10.1f}"
         )
+    for runtime in runtimes:
+        if runtime.final_verdict == "ENGINE_FAILED":
+            print(f"  {runtime.task.key}: Engine exited with code {runtime.last_worker_returncode}")
 
 
 def create_demo_manifest() -> Path:
